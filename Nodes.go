@@ -14,6 +14,10 @@ const (
 	PAGE_SIZE    = 4096
 	MAX_KEY_SIZE = 1000
 	MAX_VAL_SIZE = 3000
+	KLEN_LEN     = 2
+	VLEN_LEN     = 2
+	KVLEN_LEN    = KLEN_LEN + VLEN_LEN
+	OFFSET_SIZE  = 2
 
 	IndexERRMSG = "Index is bigger than expected in the function: "
 )
@@ -28,16 +32,16 @@ header
 
 pointers
 
-	number of keys * 8 (or wanted key)
+	number/index of keys * 8 
 
 offsets
 
-	number of keys * 2 (or wanted key)
+	number/index of keys * 2 
 
 actual kv
 
 	key len 2
-	val len
+	val len 2
 	key
 	value
 */
@@ -67,11 +71,19 @@ func (n Node) getChildPtr(i uint16) uint64 {
 	return binary.LittleEndian.Uint64(n[pos:])
 }
 
+func (n Node) setChildPtr(i uint16, val uint64) {
+	if i > n.getnKeys() {
+		panic(IndexERRMSG + "setChildPter")
+	}
+	pos := HEADER + 8*i
+	binary.LittleEndian.PutUint64(n[pos:], val)
+}
+
 func getOffsetPos(n Node, i uint16) uint16 {
 	if i > n.getnKeys() {
 		panic(IndexERRMSG + "getOffsetPos")
 	}
-	return HEADER + 8*n.getnKeys() + 2*(i-1)
+	return HEADER + 8*n.getnKeys() + OFFSET_SIZE*(i-1)
 }
 
 func (n Node) getOffset(i uint16) uint16 {
@@ -101,7 +113,7 @@ func (n Node) getKey(i uint16) []byte {
 		panic(IndexERRMSG + "getKey")
 	}
 	klen := binary.LittleEndian.Uint16(n[n.getKVPos(i):])
-	return n[n.getKVPos(i)+4:][:klen]
+	return n[n.getKVPos(i)+KVLEN_LEN:][:klen]
 
 }
 
@@ -111,7 +123,7 @@ func (n Node) getVal(i uint16) []byte {
 	}
 	klen := binary.LittleEndian.Uint16(n[n.getKVPos(i):])
 	vlen := binary.LittleEndian.Uint16(n[n.getKVPos(i)+2:])
-	return n[n.getKVPos(i)+4+klen:][:vlen]
+	return n[n.getKVPos(i)+KVLEN_LEN+klen:][:vlen]
 }
 
 func (n Node) nBytes() uint16 {
@@ -132,15 +144,22 @@ func nodeLookupLE(n Node, key []byte) uint16 {
 	return found
 }
 
-func insertLeaf(new, old Node, i uint16, key, val []byte) {
-	new.setHeader(LEAF, old.getnKeys()+1)
-	nodeAppendRange(new, old, 0, 0, i)
-	nodeAppendKV(new, i, 0, key, val)
-	nodeAppendRange(new, old, 0, 0, i)
+func insertLeaf(new, src Node, i uint16, key, val []byte) {
+	new.setHeader(LEAF, src.getnKeys()+1)
+	copyIndexRange(new, src, 0, 0, i)
+	updateIndexKV(new, i, 0, key, val)
+	copyIndexRange(new, src, 0, 0, i)
 }
 
-func nodeAppendRange(new, old Node, newi, oldi, n uint16) {
-	for i=oldi; i < n; i ++{
-		pos := 
+func copyIndexRange(new, src Node, newIndex, srcIndex, nK uint16) {
+	for i := srcIndex; i < nK; i++ {
+		pos := src.getKVPos(i)
+		copy(new[:], src[:])
+
 	}
+}
+
+func updateIndexKV(new Node, i uint16, ptr uint64, key, val []byte) {
+	new.setChildPtr(i, ptr)
+	pos := 
 }
