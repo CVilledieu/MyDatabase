@@ -14,9 +14,6 @@ const (
 	PAGE_SIZE    = 4096
 	MAX_KEY_SIZE = 1000
 	MAX_VAL_SIZE = 3000
-	KLEN_LEN     = 2
-	VLEN_LEN     = 2
-	KVLEN_LEN    = KLEN_LEN + VLEN_LEN
 	OFFSET_SIZE  = 2
 
 	IndexERRMSG = "Index is bigger than expected in the function: "
@@ -32,11 +29,11 @@ header
 
 pointers
 
-	number/index of keys * 8 
+	number/index of keys * 8
 
 offsets
 
-	number/index of keys * 2 
+	number/index of keys * 2
 
 actual kv
 
@@ -48,16 +45,13 @@ actual kv
 type Node []byte
 
 func (n Node) getType() uint16 {
-	return binary.LittleEndian.Uint16(n[0:1])
+	return binary.LittleEndian.Uint16(n[0:2])
 }
 
 func (n Node) getnKeys() uint16 {
 	return binary.LittleEndian.Uint16(n[2:4])
 }
 
-// Sample code has indexs set [0:2] and [2:4]
-// Note to find out if this is error or not.
-// Seems it should be [0:1][2:3]
 func (n Node) setHeader(nType, nKeys uint16) {
 	binary.LittleEndian.PutUint16(n[0:2], nType)
 	binary.LittleEndian.PutUint16(n[2:4], nKeys)
@@ -113,7 +107,7 @@ func (n Node) getKey(i uint16) []byte {
 		panic(IndexERRMSG + "getKey")
 	}
 	klen := binary.LittleEndian.Uint16(n[n.getKVPos(i):])
-	return n[n.getKVPos(i)+KVLEN_LEN:][:klen]
+	return n[n.getKVPos(i)+4:][:klen]
 
 }
 
@@ -123,7 +117,7 @@ func (n Node) getVal(i uint16) []byte {
 	}
 	klen := binary.LittleEndian.Uint16(n[n.getKVPos(i):])
 	vlen := binary.LittleEndian.Uint16(n[n.getKVPos(i)+2:])
-	return n[n.getKVPos(i)+KVLEN_LEN+klen:][:vlen]
+	return n[n.getKVPos(i)+4+klen:][:vlen]
 }
 
 func (n Node) nBytes() uint16 {
@@ -154,12 +148,20 @@ func insertLeaf(new, src Node, i uint16, key, val []byte) {
 func copyIndexRange(new, src Node, newIndex, srcIndex, nK uint16) {
 	for i := srcIndex; i < nK; i++ {
 		pos := src.getKVPos(i)
-		copy(new[:], src[:])
+		klen := binary.LittleEndian.Uint16(src[pos:])
+		copy(new[pos:], src[pos:])
+		copy(new[pos+2:], src[pos+2:])
+		copy(new[pos+4:], src[pos+4:])
+		copy(new[pos+4+klen:], src[pos+4+klen:])
 
 	}
 }
 
 func updateIndexKV(new Node, i uint16, ptr uint64, key, val []byte) {
 	new.setChildPtr(i, ptr)
-	pos := 
+	pos := new.getKVPos(i)
+	binary.LittleEndian.PutUint16(new[pos:], uint16(len(key)))
+	binary.LittleEndian.PutUint16(new[pos+2:], uint16(len(val)))
+	copy(new[pos+4:], key)
+	copy(new[pos+4+uint16(len(key)):], val)
 }
